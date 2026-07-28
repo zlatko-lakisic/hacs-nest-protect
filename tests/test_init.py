@@ -407,7 +407,12 @@ async def test_subscriber_401_persists_refreshed_cookies(hass):
 
 
 async def test_subscriber_ensure_session_persists_refreshed_cookies(hass):
-    """Proactive session refresh persists refreshed cookies before subscribing."""
+    """Successful subscribe cycle persists cookies rotated during ensure_session.
+
+    Regression test: previously only the 401 path persisted rotated cookies,
+    so the hourly happy-path refresh replayed stale cookies until Google
+    invalidated the session (USER_LOGGED_OUT) and forced daily re-auth.
+    """
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -429,6 +434,7 @@ async def test_subscriber_ensure_session_persists_refreshed_cookies(hass):
 
     assert entry.data.get(CONF_COOKIES) == new_cookies
     assert client.cookies == new_cookies
+    assert sm.consecutive_failures == 0
 
 
 async def test_subscriber_401_repeated_failures_triggers_reauth(hass):
