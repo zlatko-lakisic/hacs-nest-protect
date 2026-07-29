@@ -31,6 +31,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           if git merge-base --is-ancestor upstream/main origin/main; then
             echo "Already contains upstream/main — nothing to sync"
             exit 0
@@ -38,29 +42,32 @@ jobs:
 
           BRANCH="sync/upstream-$(date -u +%Y%m%d)"
           git checkout -B "$BRANCH" origin/main
-          if git merge --no-edit upstream/main; then
-            if git diff --quiet origin/main..HEAD; then
-              echo "Merge produced no changes — nothing to open"
-              exit 0
-            fi
-            git push -u origin "$BRANCH" --force-with-lease
-            if gh pr list --head "$BRANCH" --json number --jq 'length' | grep -qx '0'; then
-              gh pr create \
-                --base main \
-                --head "$BRANCH" \
-                --title "chore: sync upstream iMicknl/ha-nest-protect" \
-                --body "$(cat <<'EOF'
+
+          if ! git merge --no-edit upstream/main; then
+            echo "::error::Merge with upstream/main failed (conflicts or other git error). Manual resolution required."
+            git status --short || true
+            git merge --abort || true
+            exit 1
+          fi
+
+          if git diff --quiet origin/main..HEAD; then
+            echo "Merge produced no changes — nothing to open"
+            exit 0
+          fi
+
+          git push -u origin "$BRANCH" --force-with-lease
+          if gh pr list --head "$BRANCH" --json number --jq 'length' | grep -qx '0'; then
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: sync upstream iMicknl/ha-nest-protect" \
+              --body "$(cat <<'EOF'
           ## Summary
           Automated sync from upstream `iMicknl/ha-nest-protect` `main`.
 
           Review carefully for conflicts with fork-maintained cookie/session refresh fixes.
           EOF
           )"
-            else
-              echo "PR already exists for $BRANCH"
-            fi
           else
-            echo "Merge conflict with upstream — manual resolution required"
-            git merge --abort || true
-            exit 1
+            echo "PR already exists for $BRANCH"
           fi
