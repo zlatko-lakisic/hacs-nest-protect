@@ -23,6 +23,19 @@ from .entity import NestDescriptiveEntity
 from .lock import NestLockBatterySensor, subscribe_to_lock_discovery
 from .pynest.enums import BucketType
 
+SMOKE_CO_STATUS_TO_STATE: dict[int, str] = {
+    0: "ok",
+    1: "testing",
+    2: "warning",
+    3: "emergency",
+}
+
+
+def smoke_co_status_to_state(state: int) -> str | None:
+    """Convert the raw smoke/CO status code to an enum state."""
+    # An unrecognised code must surface as unknown, never as a false "ok".
+    return SMOKE_CO_STATUS_TO_STATE.get(state)
+
 
 def milli_volt_to_percentage(state: int):
     """
@@ -121,9 +134,23 @@ SENSOR_DESCRIPTIONS: list[NestProtectSensorDescription] = [
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    NestProtectSensorDescription(
+        key="smoke_status",
+        translation_key="smoke_status_sensor",
+        value_fn=smoke_co_status_to_state,
+        device_class=SensorDeviceClass.ENUM,
+        options=list(SMOKE_CO_STATUS_TO_STATE.values()),
+        icon="mdi:smoke",
+    ),
+    NestProtectSensorDescription(
+        key="co_status",
+        translation_key="co_status_sensor",
+        value_fn=smoke_co_status_to_state,
+        device_class=SensorDeviceClass.ENUM,
+        options=list(SMOKE_CO_STATUS_TO_STATE.values()),
+        icon="mdi:molecule-co",
+    ),
     # TODO Add Color Status (gray, green, yellow, red)
-    # TODO Smoke Status (OK, Warning, Emergency)
-    # TODO CO Status (OK, Warning, Emergency)
 ]
 
 
@@ -158,9 +185,11 @@ class NestProtectSensor(NestDescriptiveEntity, SensorEntity):
     entity_description: NestProtectSensorDescription
 
     @property
-    def native_value(self) -> bool:
+    def native_value(self) -> StateType | datetime.datetime:
         """Return the state of the sensor."""
         state = self.bucket.value.get(self.entity_description.key)
+        if state is None:
+            return None
 
         if self.entity_description.value_fn:
             return self.entity_description.value_fn(state)
